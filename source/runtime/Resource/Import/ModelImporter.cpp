@@ -28,7 +28,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../../RHI/RHI_Texture.h"
 #include "../../Geometry/Mesh.h"
 #include "../../Rendering/Material.h"
-#include "../../Animation/Animation.h"
 #include "../../Animation/Skeleton.h"
 #include "../../Animation/AnimationClip.h"
 #include "../../Animation/SkeletalMeshBinding.h"
@@ -39,7 +38,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 SP_WARNINGS_OFF
 #include "assimp/scene.h"
 #include "assimp/ProgressHandler.hpp"
-#include "assimp/version.h"
 #include "assimp/Importer.hpp"
 #include "assimp/postprocess.h"
 #include "assimp/anim.h"

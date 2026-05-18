@@ -26,11 +26,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../RHI_Implementation.h"
 #include "../RHI_Device.h"
 #include "../RHI_Queue.h"
-#include "../RHI_Pipeline.h"
-#include "../RHI_Shader.h"
 #include "../Rendering/Renderer.h"
-#include "../../World/World.h"
-#include "../World/Components/Camera.h"
 SP_WARNINGS_OFF
 #ifdef _WIN32
 #include <xess/xess_vk.h>

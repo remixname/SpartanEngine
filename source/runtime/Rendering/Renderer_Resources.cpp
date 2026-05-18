@@ -25,7 +25,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "Renderer.h"
 #include "Material.h"
 #include "../Geometry/GeometryGeneration.h"
-#include "../World/Components/Light.h"
+#include "../Rendering/Instance.h"
 #include "../Resource/ResourceCache.h"
 #include "../Display/Display.h"
 #include "../RHI/RHI_Texture.h"

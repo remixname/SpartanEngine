@@ -23,7 +23,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pch.h"
 #include "Renderer.h"
 #include "../World/World.h"
-#include "../World/Components/Light.h"
 #include "../RHI/RHI_CommandList.h"
 #include "../RHI/RHI_Shader.h"
 //=============================================

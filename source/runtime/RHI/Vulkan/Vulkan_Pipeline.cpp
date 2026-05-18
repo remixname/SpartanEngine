@@ -32,8 +32,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../RHI_DescriptorSetLayout.h"
 #include "../RHI_Device.h"
 #include "../RHI_Texture.h"
-#include "../RHI_VendorTechnology.h"
-#include "../Core/Debugging.h"
 #include "../World/Components/Render.h"
 //=====================================
 

@@ -45,8 +45,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../World/Entity.h"
 #include "../World/Components/Light.h"
 #include "../World/Components/Camera.h"
-#include "../World/Components/Volume.h"
-#include "../World/Components/Render.h"
 #include "../Core/ProgressTracker.h"
 #include "../Math/Rectangle.h"
 #include "../Resource/Import/ImageImporter.h"

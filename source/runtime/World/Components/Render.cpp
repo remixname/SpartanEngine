@@ -79,7 +79,6 @@ namespace spartan
 
         // material
         node.append_attribute("material_name")    = m_material && !m_material_default ? m_material->GetObjectName().c_str() : "";
-        node.append_attribute("material_default") = m_material_default;
 
         // per-renderable material overrides, only set fields are written so unset ones keep inheriting from the material
         auto save_override = [&node](const char* name, float v)
@@ -156,9 +155,8 @@ namespace spartan
         }
 
         // material
-        m_material_default         = node.attribute("material_default").as_bool(true);
         const string material_name = node.attribute("material_name").as_string();
-        if (!material_name.empty() && !m_material_default)
+        if (!material_name.empty())
         {
             shared_ptr<Material> material = ResourceCache::GetByName<Material>(material_name);
             if (material)
@@ -166,7 +164,7 @@ namespace spartan
                 SetMaterial(material);
             }
         }
-        else if (m_material_default)
+        else
         {
             // defer default material assignment - renderer may not be ready during load
             m_needs_default_material = true;

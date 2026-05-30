@@ -22,6 +22,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //= INCLUDES ================================
 #include "pch.h"
 #include <sstream>
+#include <unordered_map>
 #include "Render.h"
 #include "Camera.h"
 #include "../Entity.h"
@@ -126,26 +127,18 @@ namespace spartan
         m_sub_mesh_index       = node.attribute("sub_mesh_index").as_uint();
         if (!mesh_name.empty())
         {
+            static const std::unordered_map<string, MeshType> standard_meshes =
+            {
+                { "standard_cube",     MeshType::Cube },
+                { "standard_quad",     MeshType::Quad },
+                { "standard_sphere",   MeshType::Sphere },
+                { "standard_cylinder", MeshType::Cylinder },
+                { "standard_cone",     MeshType::Cone }
+            };
             // check for standard meshes first (owned by Renderer, not ResourceCache)
-            if (mesh_name == "standard_cube")
+            if (auto it = standard_meshes.find(mesh_name); it != standard_meshes.end())
             {
-                m_mesh = Renderer::GetStandardMesh(MeshType::Cube).get();
-            }
-            else if (mesh_name == "standard_quad")
-            {
-                m_mesh = Renderer::GetStandardMesh(MeshType::Quad).get();
-            }
-            else if (mesh_name == "standard_sphere")
-            {
-                m_mesh = Renderer::GetStandardMesh(MeshType::Sphere).get();
-            }
-            else if (mesh_name == "standard_cylinder")
-            {
-                m_mesh = Renderer::GetStandardMesh(MeshType::Cylinder).get();
-            }
-            else if (mesh_name == "standard_cone")
-            {
-                m_mesh = Renderer::GetStandardMesh(MeshType::Cone).get();
+                m_mesh = Renderer::GetStandardMesh(it->second).get();
             }
             else
             {

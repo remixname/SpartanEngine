@@ -224,12 +224,7 @@ namespace spartan
         // compute mesh bounding box (needed for culling and LOD)
         if (m_mesh)
         {
-            vector<RHI_Vertex_PosTexNorTan> vertices;
-            m_mesh->GetGeometry(m_sub_mesh_index, nullptr, &vertices);
-            if (!vertices.empty())
-            {
-                m_bounding_box_mesh = BoundingBox(vertices.data(), static_cast<uint32_t>(vertices.size()));
-            }
+            m_bounding_box_mesh = m_mesh->getBoundingBox(m_sub_mesh_index, 0);
         }
 
         // update instance buffer and bounding boxes
@@ -316,15 +311,7 @@ namespace spartan
         // set mesh
         m_mesh           = mesh;
         m_sub_mesh_index = sub_mesh_index;
-
-        // compute and set bounding box (GetGeometry validates bounds internally)
-        vector<RHI_Vertex_PosTexNorTan> vertices;
-        mesh->GetGeometry(sub_mesh_index, nullptr, &vertices);
-        if (!vertices.empty())
-        {
-            m_bounding_box_mesh = BoundingBox(vertices.data(), static_cast<uint32_t>(vertices.size()));
-        }
-
+        m_bounding_box_mesh = m_mesh->getBoundingBox(sub_mesh_index, 0);
         Tick(); // update bounding boxes, frustum and distance culling
     }
 

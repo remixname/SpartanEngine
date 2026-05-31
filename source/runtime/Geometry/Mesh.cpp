@@ -318,6 +318,11 @@ namespace spartan
         }
     }
 
+    math::BoundingBox Mesh::getBoundingBox(uint32_t sub_mesh_index, uint32_t lod) const
+    {
+        return m_sub_meshes[sub_mesh_index].lods[lod].aabb;
+    }
+
     void Mesh::AddLod(vector<RHI_Vertex_PosTexNorTan>& vertices, vector<uint32_t>& indices, const uint32_t sub_mesh_index)
     {
         // build per-lod meshlets, this also repacks indices into meshlet-contiguous order and returns the lod aabb the meshlet bounds were quantized against

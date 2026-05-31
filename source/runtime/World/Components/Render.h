@@ -139,7 +139,6 @@ namespace spartan
         uint32_t GetInstanceCount()  const          { return m_instances.empty() ? 1 : static_cast<uint32_t>(m_instances.size()); }
         uint32_t GetGlobalInstanceOffset() const    { return m_global_instance_offset; }
         math::Matrix GetInstance(const uint32_t index, const bool to_world);
-        void SetInstances(const std::vector<Instance>& instances);
         void SetInstances(const std::vector<math::Matrix>& transforms);
 
         // render distance
@@ -164,6 +163,7 @@ namespace spartan
         void SetPreviousLights(uint64_t lights) { m_previous_lights = lights; }
 
     private:
+        void SetInstances(const std::vector<Instance>& instances);
         void UpdateAabb();
         void UpdateFrustumAndDistanceCulling();
         void UpdateLodIndices();

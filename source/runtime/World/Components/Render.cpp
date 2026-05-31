@@ -21,13 +21,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //= INCLUDES ================================
 #include "pch.h"
-#include <sstream>
 #include <unordered_map>
 #include "Render.h"
 #include "Camera.h"
 #include "../Entity.h"
 #include "../RHI/RHI_Buffer.h"
-#include "../RHI/RHI_Device.h"
 #include "../RHI/RHI_AccelerationStructure.h"
 #include "../../Resource/ResourceCache.h"
 #include "../../Rendering/Renderer.h"
@@ -36,6 +34,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 SP_WARNINGS_OFF
 #include <sol/sol.hpp>
 #include "../IO/pugixml.hpp"
+#include "../IO/pugixml_ext.hpp"
+#include "../IO/Serialization.hpp"
+
 SP_WARNINGS_ON
 //===========================================
 
@@ -109,13 +110,7 @@ namespace spartan
         for (const auto& instance : m_instances)
         {
             pugi::xml_node t_node = instances_node.append_child("Transform");
-            math::Matrix matrix = instance.GetMatrix();
-            std::stringstream ss;
-            ss << matrix.m00 << " " << matrix.m01 << " " << matrix.m02 << " " << matrix.m03 << " "
-               << matrix.m10 << " " << matrix.m11 << " " << matrix.m12 << " " << matrix.m13 << " "
-               << matrix.m20 << " " << matrix.m21 << " " << matrix.m22 << " " << matrix.m23 << " "
-               << matrix.m30 << " " << matrix.m31 << " " << matrix.m32 << " " << matrix.m33;
-            t_node.append_attribute("matrix") = ss.str().c_str();
+            t_node.append_attribute("matrix") = to_c_str(instance.GetMatrix());
         }
     }
 
@@ -201,23 +196,7 @@ namespace spartan
         {
             for (pugi::xml_node t_node : instances_node.children("Transform"))
             {
-                std::stringstream ss(t_node.attribute("matrix").as_string());
-                math::Matrix matrix;
-                float m[16];
-                for (int i = 0; i < 16; ++i)
-                {
-                    ss >> m[i];
-                }
-                if (!ss.fail())
-                {
-                    matrix = math::Matrix(m[0], m[1], m[2], m[3],
-                        m[4], m[5], m[6], m[7],
-                        m[8], m[9], m[10], m[11],
-                        m[12], m[13], m[14], m[15]);
-                    Instance instance;
-                    instance.SetMatrix(matrix);
-                    m_instances.emplace_back(instance);
-                }
+                m_instances.emplace_back(pugi::ext::xml_attribute(t_node.attribute("matrix")).as_matrix());
             }
         }
 
@@ -521,14 +500,14 @@ namespace spartan
     }
 
     RHI_Buffer* Render::GetIndexBuffer() const
-	{
+    {
         if (!m_mesh)
         {
             return nullptr;
         }
 
         return m_mesh->GetIndexBuffer();
-	}
+    }
 
     RHI_Buffer* Render::GetVertexBuffer() const
     {

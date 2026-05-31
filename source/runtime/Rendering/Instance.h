@@ -43,6 +43,12 @@ namespace spartan
                               // full float xyz) because grass needs sub-cm world precision that half-floats
                               // cannot give past a few hundred meters from the origin
 
+        Instance() = default;
+        Instance(math::Matrix&& matrix)
+        {
+            SetMatrix(std::move(matrix));
+        }
+
         math::Matrix GetMatrix() const
         {
             // compose position

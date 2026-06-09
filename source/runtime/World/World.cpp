@@ -1203,32 +1203,7 @@ namespace spartan
             string directory = world_file_path_to_resource_directory(file_path);
             FileSystem::CreateDirectory_(directory);
 
-            vector<shared_ptr<IResource>> resources = ResourceCache::GetResources();
-
-            // save resources filtered by type
-            for (shared_ptr<IResource>& resource : resources)
-            {
-                string ext;
-                switch (resource->GetResourceType())
-                {
-                    case ResourceType::Texture:
-                    {
-                        // only save textures that can be saved (compressed with data)
-                        // others will be re-imported from source path when material loads
-                        RHI_Texture* texture = static_cast<RHI_Texture*>(resource.get());
-                        if (!texture->CanSaveToFile())
-                        {
-                            continue;
-                        }
-                        ext = EXTENSION_TEXTURE;
-                        break;
-                    }
-                    case ResourceType::Material: ext = EXTENSION_MATERIAL; break;
-                    case ResourceType::Mesh:     ext = EXTENSION_MESH;     break;
-                    default: continue;
-                }
-                resource->SaveToFile(directory + resource->GetObjectName() + ext);
-            }
+            ResourceCache::SaveCacheResources(directory);
         }
 
         // create document

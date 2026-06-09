@@ -155,7 +155,8 @@ namespace spartan
                 if (resource->GetResourceFilePath() == existing->GetResourceFilePath())
                     return std::static_pointer_cast<T>(existing);
             }
-
+            // Cache changed, request resources info list lazy update
+            NeedUpdateResourceInfoList();
             // if not, cache it and return the cached resource
             return std::static_pointer_cast<T>(GetResources().emplace_back(resource));
         }
@@ -192,6 +193,35 @@ namespace spartan
             return Cache<T>(resource); // cache and return
         }
 
+        static void SaveCacheResources(const std::string& directory)
+        {
+            std::lock_guard<std::recursive_mutex> guard(GetMutex());
+            // save resources filtered by type
+            for (std::shared_ptr<IResource>& resource : GetResources())
+            {
+                std::string ext;
+                switch (resource->GetResourceType())
+                {
+                case ResourceType::Texture:
+                {
+                    // only save textures that can be saved (compressed with data)
+                    // others will be re-imported from source path when material loads
+                    RHI_Texture* texture = static_cast<RHI_Texture*>(resource.get());
+                    if (!texture->CanSaveToFile())
+                    {
+                        continue;
+                    }
+                    ext = EXTENSION_TEXTURE;
+                    break;
+                }
+                case ResourceType::Material: ext = EXTENSION_MATERIAL; break;
+                case ResourceType::Mesh:     ext = EXTENSION_MESH;     break;
+                default: continue;
+                }
+                resource->SaveToFile(directory + resource->GetObjectName() + ext);
+            }
+        }
+
         template <class T>
         static void Remove(std::shared_ptr<T>& resource)
         {
@@ -207,11 +237,13 @@ namespace spartan
                 ),
                 GetResources().end()
             );
+            // Cache changed, request resources info list lazy update
+            NeedUpdateResourceInfoList();
         }
 
         // memory
         static uint64_t GetMemoryUsage(ResourceType type = ResourceType::Max);
-        static uint32_t GetResourceCount(ResourceType type = ResourceType::Max);
+        static size_t GetResourceCount(ResourceType type = ResourceType::Max);
 
         // directories
         static void AddResourceDirectory(ResourceDirectory type, const std::string& directory);
@@ -222,11 +254,24 @@ namespace spartan
         static const char* GetDataDirectory();
 
         // misc
-        static std::vector<std::shared_ptr<IResource>>& GetResources();
-        static std::recursive_mutex& GetMutex();
-        static std::mutex& GetInFlightMutex(const std::string& path);
+
         static bool GetUseRootShaderDirectory();
         static void SetUseRootShaderDirectory(const bool use_root_shader_directory);
         static const Icon& GetIcon(IconType type);
+
+        static constexpr size_t props_count = 4;
+        using ResourceProperty = std::variant<std::string, uint64_t>;
+        using ResourceInfo = std::array<ResourceProperty, props_count>;
+        using ResourceInfoList = std::vector<ResourceInfo>;
+        static const ResourceInfoList& GetResourceInfoList();
+
+    private:
+
+        static std::vector<std::shared_ptr<IResource>>& GetResources();
+        static std::recursive_mutex& GetMutex();
+        static std::mutex& GetInFlightMutex(const std::string& path);
+
+        static void NeedUpdateResourceInfoList();
+        static void UpdateResourceInfoList();
     };
 }

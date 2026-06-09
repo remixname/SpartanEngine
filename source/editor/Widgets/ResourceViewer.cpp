@@ -23,6 +23,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pch.h"
 #include "ResourceViewer.h"
 #include "Resource/ResourceCache.h"
+#include <variant>
 //=================================
 
 //= NAMESPACES ===============
@@ -30,6 +31,10 @@ using namespace std;
 using namespace spartan;
 using namespace spartan::math;
 //============================
+
+// Should eventually be moved to core, but kept here for now as it has no other dependencies.
+template<class... Ts>
+struct overloaded : Ts... { using Ts::operator()...; };
 
 namespace
 {
@@ -65,16 +70,22 @@ namespace
         return it != str_h.end();
     }
 
-    bool is_resource_searched(IResource* resource, const char* cstr_needle)
+    bool is_resource_searched(const ResourceCache::ResourceInfo& resource_info, const char* cstr_needle)
     {
-        if (const SpartanObject* object = dynamic_cast<SpartanObject*>(resource))
+        for (size_t i = 0; i < ResourceCache::props_count; ++i)
         {
-            return contains_search_ignore_case(resource->GetResourceTypeCstr(), cstr_needle)
-                    || contains_search_ignore_case(to_string(object->GetObjectId()).c_str(), cstr_needle)
-                    || contains_search_ignore_case(object->GetObjectName().c_str(), cstr_needle)
-                    || contains_search_ignore_case(resource->GetResourceFilePath().c_str(), cstr_needle);
-        }
+            std::string record_str;
+            std::visit(overloaded
+            {
+                [&record_str](const std::string& prop) { record_str = prop; },
+                [&record_str](uint64_t prop) { record_str = to_string(prop); }
+            }, resource_info[i]);
 
+            if (contains_search_ignore_case(record_str.c_str(), cstr_needle))
+            {
+                return true;
+            }
+        }
         return false;
     }
 }
@@ -87,10 +98,10 @@ ResourceViewer::ResourceViewer(Editor* editor) : Widget(editor)
 
 void ResourceViewer::OnTickVisible()
 {
-    auto resources = ResourceCache::GetResources();
+    auto resources_info_list = ResourceCache::GetResourceInfoList();
     const float memory_usage = ResourceCache::GetMemoryUsage() / 1000.0f / 1000.0f;
 
-    ImGui::Text("Resource count in scene: %d, Memory usage: %d Mb", static_cast<uint32_t>(resources.size()), static_cast<uint32_t>(memory_usage));
+    ImGui::Text("Resource count in scene: %zu, Memory usage: %d Mb", ResourceCache::GetResourceCount(), static_cast<uint32_t>(memory_usage));
     ImGui::Separator();
     static char search_buffer[128] = "";
     ImGui::InputTextWithHint("##resource_viewer_search", "Search by type, ID, name or path in case insensitive format", search_buffer, IM_ARRAYSIZE(search_buffer));
@@ -137,45 +148,22 @@ void ResourceViewer::OnTickVisible()
                 table_sort_specs->SpecsDirty = false;
             }
         }
-
-        ranges::sort(resources, [](const shared_ptr<IResource>& a, const shared_ptr<IResource>& b)
+        SP_ASSERT(sorted_column >= 0 && sorted_column < ResourceCache::props_count);
+        ranges::sort(resources_info_list, [](const ResourceCache::ResourceInfo& a, const ResourceCache::ResourceInfo& b)
         {
-            const SpartanObject* object_A = dynamic_cast<SpartanObject*>(a.get());
-            const SpartanObject* object_B = dynamic_cast<SpartanObject*>(b.get());
-            if (!object_A || !object_B)
-            {
-                return false;
-            }
+            return sort_direction == ImGuiSortDirection_Ascending
+                                ? a[sorted_column] < b[sorted_column]
+                                : a[sorted_column] > b[sorted_column];
 
-            switch (sorted_column)
-            {
-                case 0: return sort_direction == ImGuiSortDirection_Ascending
-                                ? a->GetResourceType() < b->GetResourceType()
-                                : a->GetResourceType() > b->GetResourceType();
-                case 1: return sort_direction == ImGuiSortDirection_Ascending
-                                ? object_A->GetObjectId() < object_B->GetObjectId()
-                                : object_A->GetObjectId() > object_B->GetObjectId();
-                case 2: return sort_direction == ImGuiSortDirection_Ascending
-                                ? a->GetObjectName() < b->GetObjectName()
-                                : a->GetObjectName() > b->GetObjectName();
-                case 3: return sort_direction == ImGuiSortDirection_Ascending
-                                ? a->GetResourceFilePath() < b->GetResourceFilePath()
-                                : a->GetResourceFilePath() > b->GetResourceFilePath();
-                case 4: return sort_direction == ImGuiSortDirection_Ascending
-                                ? object_A->GetObjectSize() < object_B->GetObjectSize()
-                                : object_A->GetObjectSize() > object_B->GetObjectSize();
-                default: return true;
             }
-        });
+        );
 
         // --- Draw Row Data ---
-        for (const shared_ptr<IResource>& resource : resources)
+        for (const ResourceCache::ResourceInfo& resource_info : resources_info_list)
         {
-            if (const SpartanObject* object = dynamic_cast<SpartanObject*>(resource.get()))
-            {
                 if (search_buffer[0] != '\0')
                 {
-                    if (!is_resource_searched(resource.get(), search_buffer))
+                if (!is_resource_searched(resource_info, search_buffer))
                     {
                         continue;
                     }
@@ -186,25 +174,14 @@ void ResourceViewer::OnTickVisible()
                 // Switch row
                 ImGui::TableNextRow();
 
-                // Type
-                ImGui::TableSetColumnIndex(0);
-                ImGui::Text(resource->GetResourceTypeCstr());
-
-                // ID
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Text(to_string(object->GetObjectId()).c_str());
-
-                // Name
-                ImGui::TableSetColumnIndex(2);
-                ImGui::Text(resource->GetObjectName().c_str());
-
-                // Path
-                ImGui::TableSetColumnIndex(3);
-                ImGui::Text(resource->GetResourceFilePath().c_str());
-
-                // Memory
-                ImGui::TableSetColumnIndex(4);
-                print_memory(object->GetObjectSize());
+            for (int i = 0; i < ResourceCache::props_count; ++i)
+            {
+                ImGui::TableSetColumnIndex(i);
+                std::visit(overloaded
+                    {
+                        [](const std::string& prop) { ImGui::Text(prop.c_str()); },
+                        [](uint64_t prop) { ImGui::Text(to_string(prop).c_str()); }
+                    }, resource_info[i]);
             }
         }
 

@@ -51,6 +51,8 @@ namespace spartan
         array<string, 6> m_standard_resource_directories;
         char m_project_directory[256] = {};
         vector<shared_ptr<IResource>> m_resources;
+        std::vector<ResourceCache::ResourceInfo> m_resource_info_list;
+        static bool m_need_update_resource_info_list;
         recursive_mutex m_mutex;
         bool use_root_shader_directory = false;
         unordered_map<string, unique_ptr<mutex>> m_in_flight_mutexes;
@@ -141,9 +143,9 @@ namespace spartan
         for (shared_ptr<IResource>& resource : m_resources)
         {
             if (resource->GetResourceType() == type || type == ResourceType::Max)
-            {
+        {
                 resources.emplace_back(resource);
-            }
+        }
         }
         return resources;
     }
@@ -155,19 +157,24 @@ namespace spartan
         for (shared_ptr<IResource>& resource : m_resources)
         {
             if (resource->GetResourceType() == type || type == ResourceType::Max)
-            {
+        {
                 if (SpartanObject* object = dynamic_cast<SpartanObject*>(resource.get()))
                 {
                     size += object->GetObjectSize();
-                }
-            }
         }
-        return size;
     }
 
-    uint32_t ResourceCache::GetResourceCount(const ResourceType type)
+    size_t ResourceCache::GetResourceCount(const ResourceType type)
     {
-        return static_cast<uint32_t>(GetByType(type).size());
+        lock_guard<recursive_mutex> guard(m_mutex);
+        if (type == ResourceType::Max)
+        {
+            return m_resources.size();
+        }
+        else
+        {
+            return std::count_if(m_resources.begin(), m_resources.end(), [type](auto& res) { return res->GetResourceType() == type; });
+        }
     }
 
     void ResourceCache::AddResourceDirectory(const ResourceDirectory type, const string& directory)
@@ -239,6 +246,35 @@ namespace spartan
             it = m_in_flight_mutexes.emplace(path, make_unique<mutex>()).first;
         }
         return *it->second;
+    }
+
+    const ResourceCache::ResourceInfoList& ResourceCache::GetResourceInfoList()
+    {
+        if (m_need_update_resource_info_list)
+        {
+            UpdateResourceInfoList();
+            m_need_update_resource_info_list = false;
+        }
+
+        return m_resource_info_list;
+    }
+
+    void ResourceCache::NeedUpdateResourceInfoList()
+    {
+        m_need_update_resource_info_list = true;
+    }
+
+    void ResourceCache::UpdateResourceInfoList()
+    {
+        m_resource_info_list.clear();
+        std::lock_guard<std::recursive_mutex> guard(GetMutex());
+        for (auto& resource : GetResources())
+        {
+            m_resource_info_list.push_back({ { resource->GetResourceTypeCstr(),
+                resource->GetObjectId(),
+                resource->GetObjectName(),
+                resource->GetResourceFilePath() } });
+        }
     }
 
     bool ResourceCache::GetUseRootShaderDirectory()

@@ -29,6 +29,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "../FileSystem/FileSystem.h"
 #include <unordered_map>
 #include <algorithm>
+#include <numeric>
+#include <iterator>
 #include <vector>
 #include <utility>
 #include <cstdint>
@@ -136,32 +138,34 @@ namespace spartan
         return empty;
     }
 
-    vector<shared_ptr<IResource>> ResourceCache::GetByType(const ResourceType type /*= ResourceType::Unknown*/)
+    vector<shared_ptr<IResource>> ResourceCache::GetByType(const ResourceType type /*= ResourceType::Max*/)
     {
         lock_guard<recursive_mutex> guard(m_mutex);
         vector<shared_ptr<IResource>> resources;
-        for (shared_ptr<IResource>& resource : m_resources)
+        if (type == ResourceType::Max)
         {
-            if (resource->GetResourceType() == type || type == ResourceType::Max)
-        {
-                resources.emplace_back(resource);
+            resources = m_resources;
         }
+        else
+        {
+            std::copy_if(m_resources.begin(), m_resources.end(), std::back_inserter(resources), [type](const auto& res) { return res && res->GetResourceType() == type; });
         }
         return resources;
     }
 
-    uint64_t ResourceCache::GetMemoryUsage(ResourceType type /*= Resource_Unknown*/)
+    uint64_t ResourceCache::GetMemoryUsage(ResourceType type /*= ResourceType::Max*/)
     {
         lock_guard<recursive_mutex> guard(m_mutex);
-        uint64_t size = 0;
-        for (shared_ptr<IResource>& resource : m_resources)
+        std::function<uint64_t (uint64_t, const std::shared_ptr<IResource>&)> accumFunc;
+        if (type == ResourceType::Max)
         {
-            if (resource->GetResourceType() == type || type == ResourceType::Max)
-        {
-                if (SpartanObject* object = dynamic_cast<SpartanObject*>(resource.get()))
-                {
-                    size += object->GetObjectSize();
+            accumFunc = [](uint64_t sum, const auto& res) { return sum + res->GetObjectSize(); };
         }
+        else
+        {
+            accumFunc = [type](uint64_t sum, const auto& res) { return sum + (res->GetResourceType() == type) ? res->GetObjectSize() : 0; };
+        }
+        return std::accumulate(m_resources.begin(), m_resources.end(), 0ull, accumFunc);
     }
 
     size_t ResourceCache::GetResourceCount(const ResourceType type)

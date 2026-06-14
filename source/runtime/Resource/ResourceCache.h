@@ -200,13 +200,23 @@ namespace spartan
         {
             if (!resource)
                 return;
+
+            std::lock_guard<std::recursive_mutex> guard(GetMutex());
+            auto resource_id_to_remove = resource->GetObjectId();
             GetResources().erase
             (
                 std::remove_if
                 (
                     GetResources().begin(),
                     GetResources().end(),
-                    [](std::shared_ptr<IResource> resource) { return dynamic_cast<SpartanObject*>(resource.get())->GetObjectId() == resource->GetObjectId(); }
+                    [resource_id_to_remove](std::shared_ptr<IResource> resource)
+                    {
+                        if (resource)
+                        {
+                            return resource_id_to_remove == resource->GetObjectId();
+                        }
+                        return false;
+                    }
                 ),
                 GetResources().end()
             );

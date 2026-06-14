@@ -193,34 +193,7 @@ namespace spartan
             return Cache<T>(resource); // cache and return
         }
 
-        static void SaveCacheResources(const std::string& directory)
-        {
-            std::lock_guard<std::recursive_mutex> guard(GetMutex());
-            // save resources filtered by type
-            for (std::shared_ptr<IResource>& resource : GetResources())
-            {
-                std::string ext;
-                switch (resource->GetResourceType())
-                {
-                case ResourceType::Texture:
-                {
-                    // only save textures that can be saved (compressed with data)
-                    // others will be re-imported from source path when material loads
-                    RHI_Texture* texture = static_cast<RHI_Texture*>(resource.get());
-                    if (!texture->CanSaveToFile())
-                    {
-                        continue;
-                    }
-                    ext = EXTENSION_TEXTURE;
-                    break;
-                }
-                case ResourceType::Material: ext = EXTENSION_MATERIAL; break;
-                case ResourceType::Mesh:     ext = EXTENSION_MESH;     break;
-                default: continue;
-                }
-                resource->SaveToFile(directory + resource->GetObjectName() + ext);
-            }
-        }
+        static void SaveCacheResources(const std::string& directory);
 
         template <class T>
         static void Remove(std::shared_ptr<T>& resource)

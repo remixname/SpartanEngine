@@ -54,7 +54,7 @@ namespace spartan
         char m_project_directory[256] = {};
         vector<shared_ptr<IResource>> m_resources;
         std::vector<ResourceCache::ResourceInfo> m_resource_info_list;
-        static bool m_need_update_resource_info_list;
+        static bool m_need_update_resource_info_list = false;
         recursive_mutex m_mutex;
         bool use_root_shader_directory = false;
         unordered_map<string, unique_ptr<mutex>> m_in_flight_mutexes;
@@ -151,6 +151,35 @@ namespace spartan
             std::copy_if(m_resources.begin(), m_resources.end(), std::back_inserter(resources), [type](const auto& res) { return res && res->GetResourceType() == type; });
         }
         return resources;
+    }
+
+    void ResourceCache::SaveCacheResources(const std::string& directory)
+    {
+        std::lock_guard<std::recursive_mutex> guard(GetMutex());
+        // save resources filtered by type
+        for (std::shared_ptr<IResource>& resource : GetResources())
+        {
+            std::string ext;
+            switch (resource->GetResourceType())
+            {
+            case ResourceType::Texture:
+            {
+                // only save textures that can be saved (compressed with data)
+                // others will be re-imported from source path when material loads
+                RHI_Texture* texture = static_cast<RHI_Texture*>(resource.get());
+                if (!texture->CanSaveToFile())
+                {
+                    continue;
+                }
+                ext = EXTENSION_TEXTURE;
+                break;
+            }
+            case ResourceType::Material: ext = EXTENSION_MATERIAL; break;
+            case ResourceType::Mesh:     ext = EXTENSION_MESH;     break;
+            default: continue;
+            }
+            resource->SaveToFile(directory + resource->GetObjectName() + ext);
+        }
     }
 
     uint64_t ResourceCache::GetMemoryUsage(ResourceType type /*= ResourceType::Max*/)

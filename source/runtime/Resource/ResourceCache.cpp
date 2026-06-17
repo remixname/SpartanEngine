@@ -50,11 +50,12 @@ namespace spartan
 {
     namespace
     {
-        array<string, 6> m_standard_resource_directories;
+        array<string, static_cast<size_t>(ResourceDirectory::Max)> m_standard_resource_directories;
         char m_project_directory[256] = {};
-        vector<shared_ptr<IResource>> m_resources;
+        vector<vector<shared_ptr<IResource>>> m_resources;
         std::vector<ResourceCache::ResourceInfo> m_resource_info_list;
         static bool m_need_update_resource_info_list = false;
+        static size_t m_current_cache_pool_index = 0;
         recursive_mutex m_mutex;
         bool use_root_shader_directory = false;
         unordered_map<string, unique_ptr<mutex>> m_in_flight_mutexes;
@@ -98,6 +99,9 @@ namespace spartan
         AddResourceDirectory(ResourceDirectory::ShaderCompiler, data_dir + "shader_compiler");
         AddResourceDirectory(ResourceDirectory::Shaders, data_dir + "shaders");
         AddResourceDirectory(ResourceDirectory::Textures, data_dir + "textures");
+        AddResourceDirectory(ResourceDirectory::Materials, string(m_project_directory) + "materials");
+
+        m_resources.emplace_back();
     }
 
     void ResourceCache::Shutdown()
@@ -106,12 +110,32 @@ namespace spartan
         // this prevents dangling pointers since those materials outlive ResourceCache resources
         Renderer::ClearMaterialTextureReferences();
 
-        uint32_t resource_count = static_cast<uint32_t>(m_resources.size());
+        uint64_t resource_count = std::accumulate(m_resources.begin(), m_resources.end(), 0ull,
+            [](uint64_t sum, const auto& resource_pool)
+            {
+                return sum + resource_pool.size();
+            });
         m_resources.clear();
+        //m_resources.emplace_back();
         if (resource_count != 0)
         {
             SP_LOG_INFO("%d resources have been cleared", resource_count);
         }
+    }
+
+    void ResourceCache::PushResourcePool()
+    {
+        m_resources.emplace_back();
+        m_current_cache_pool_index++;
+        SP_ASSERT(m_current_cache_pool_index == m_resources.size() - 1);
+    }
+
+    void ResourceCache::RemoveCurrentPool()
+    {
+        Renderer::ClearMaterialTextureReferences();
+        m_resources.pop_back();
+        m_current_cache_pool_index--;
+        SP_ASSERT(m_current_cache_pool_index == m_resources.size() - 1);
     }
 
     void ResourceCache::LoadDefaultResources()
@@ -129,7 +153,7 @@ namespace spartan
     shared_ptr<IResource>& ResourceCache::GetByName(const string& name, const ResourceType type)
     {
         lock_guard<recursive_mutex> guard(m_mutex);
-        for (shared_ptr<IResource>& resource : m_resources)
+        for (shared_ptr<IResource>& resource : m_resources | std::views::join)
         {
             if (name == resource->GetObjectName() && (type == ResourceType::Max || resource->GetResourceType() == type))
                 return resource;
@@ -144,11 +168,24 @@ namespace spartan
         vector<shared_ptr<IResource>> resources;
         if (type == ResourceType::Max)
         {
-            resources = m_resources;
+            //calculate destination size to avoid bunch of allocs
+            std::size_t resource_count = 0;
+            for (const auto& sub_vec : m_resources)
+            {
+                resource_count += sub_vec.size();
+            }
+            resources.reserve(resource_count);
+
+            for (const auto& resource_pool : m_resources) {
+                resources.insert(resources.end(), resource_pool.begin(), resource_pool.end());
+            }
         }
         else
         {
-            std::copy_if(m_resources.begin(), m_resources.end(), std::back_inserter(resources), [type](const auto& res) { return res && res->GetResourceType() == type; });
+            for (auto& resource_pool : m_resources)
+            {
+                std::copy_if(resource_pool.begin(), resource_pool.end(), std::back_inserter(resources), [type](const auto& res) { return res && res->GetResourceType() == type; });
+            }
         }
         return resources;
     }
@@ -157,7 +194,7 @@ namespace spartan
     {
         std::lock_guard<std::recursive_mutex> guard(GetMutex());
         // save resources filtered by type
-        for (std::shared_ptr<IResource>& resource : GetResources())
+        for (std::shared_ptr<IResource>& resource : GetResources()[m_current_cache_pool_index])
         {
             std::string ext;
             switch (resource->GetResourceType())
@@ -194,7 +231,12 @@ namespace spartan
         {
             accumFunc = [type](uint64_t sum, const auto& res) { return sum + (res->GetResourceType() == type) ? res->GetObjectSize() : 0; };
         }
-        return std::accumulate(m_resources.begin(), m_resources.end(), 0ull, accumFunc);
+
+        return std::accumulate(m_resources.begin(), m_resources.end(), 0ull,
+            [accumFunc](uint64_t sum, const auto& resource_pool)
+            {
+                return sum + std::accumulate(resource_pool.begin(), resource_pool.end(), 0ull, accumFunc);
+            });
     }
 
     size_t ResourceCache::GetResourceCount(const ResourceType type)
@@ -206,7 +248,11 @@ namespace spartan
         }
         else
         {
-            return std::count_if(m_resources.begin(), m_resources.end(), [type](auto& res) { return res->GetResourceType() == type; });
+            return std::accumulate(m_resources.begin(), m_resources.end(), 0ull,
+                [type](uint64_t sum, const auto& resource_pool)
+                {
+                    return sum + std::count_if(resource_pool.begin(), resource_pool.end(), [type](auto& res) { return res->GetResourceType() == type; });
+                });
         }
     }
 
@@ -260,7 +306,12 @@ namespace spartan
         #endif
     }
 
-    vector<shared_ptr<IResource>>& ResourceCache::GetResources()
+    vector<shared_ptr<IResource>>& ResourceCache::GetCurrentResourcePool()
+    {
+        return m_resources[m_current_cache_pool_index];
+    }
+
+    vector<vector<shared_ptr<IResource>>>& ResourceCache::GetResources()
     {
         return m_resources;
     }
@@ -301,7 +352,7 @@ namespace spartan
     {
         m_resource_info_list.clear();
         std::lock_guard<std::recursive_mutex> guard(GetMutex());
-        for (auto& resource : GetResources())
+        for (auto& resource : GetResources() | views::join)
         {
             m_resource_info_list.push_back({ { resource->GetResourceTypeCstr(),
                 resource->GetObjectId(),

@@ -116,11 +116,11 @@ namespace spartan
         // so shut it down first (it waits) to avoid crashes due to race conditions
         ThreadPool::Shutdown();
 
-        ResourceCache::Shutdown();
-        ResourceCache::UnloadDefaultResources();
 
         PhysicsWorld::Shutdown();
         World::Shutdown();
+        ResourceCache::Shutdown();
+        ResourceCache::UnloadDefaultResources();
         Xr::Shutdown();
         Renderer::Shutdown();
    

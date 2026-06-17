@@ -24,6 +24,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "IResource.h"
 #include "../Logging/Log.h"
 #include <mutex>
+#include <ranges>
 #include "../Rendering/Material.h"
 #include "../RHI/RHI_Texture.h"
 #include "../Math/Vector2.h"
@@ -43,7 +44,9 @@ namespace spartan
         Icons,
         ShaderCompiler,
         Shaders,
-        Textures
+        Textures,
+        Materials,
+        Max
     };
 
     enum class IconType
@@ -106,6 +109,9 @@ namespace spartan
         static void Initialize();
         static void Shutdown();
 
+        static void PushResourcePool();
+        static void RemoveCurrentPool(); 
+
         // default resources
          static void LoadDefaultResources();
          static void UnloadDefaultResources();
@@ -126,7 +132,7 @@ namespace spartan
         static std::shared_ptr<T> GetByPath(const std::string& path)
         {
             std::lock_guard<std::recursive_mutex> guard(GetMutex());
-            for (std::shared_ptr<IResource>& resource : GetResources())
+            for (std::shared_ptr<IResource>& resource : GetResources() | std::views::join) // flattenig such that it iterates over all pools 
             {
                 if (path == resource->GetResourceFilePath())
                     return std::static_pointer_cast<T>(resource);
@@ -150,7 +156,7 @@ namespace spartan
             std::lock_guard<std::recursive_mutex> guard(GetMutex());
 
             // return cached resource if it already exists
-            for (std::shared_ptr<IResource>& existing : GetResources())
+            for (std::shared_ptr<IResource>& existing : GetResources() | std::views::join) // flattenig such that it iterates over all pools 
             {
                 if (resource->GetResourceFilePath() == existing->GetResourceFilePath())
                     return std::static_pointer_cast<T>(existing);
@@ -158,7 +164,7 @@ namespace spartan
             // Cache changed, request resources info list lazy update
             NeedUpdateResourceInfoList();
             // if not, cache it and return the cached resource
-            return std::static_pointer_cast<T>(GetResources().emplace_back(resource));
+            return std::static_pointer_cast<T>(GetCurrentResourcePool().emplace_back(resource));
         }
 
         // loads a resource and adds it to the resource cache
@@ -203,23 +209,11 @@ namespace spartan
 
             std::lock_guard<std::recursive_mutex> guard(GetMutex());
             auto resource_id_to_remove = resource->GetObjectId();
-            GetResources().erase
-            (
-                std::remove_if
-                (
-                    GetResources().begin(),
-                    GetResources().end(),
-                    [resource_id_to_remove](std::shared_ptr<IResource> resource)
-                    {
-                        if (resource)
-                        {
-                            return resource_id_to_remove == resource->GetObjectId();
-                        }
-                        return false;
-                    }
-                ),
-                GetResources().end()
-            );
+            for (auto& resource_pool: GetResources()) {
+                std::erase_if(resource_pool, [resource_id_to_remove](const auto& resource) {
+                    return resource && resource->GetObjectId() == resource_id_to_remove;
+                    });
+            }
             // Cache changed, request resources info list lazy update
             NeedUpdateResourceInfoList();
         }
@@ -250,7 +244,8 @@ namespace spartan
 
     private:
 
-        static std::vector<std::shared_ptr<IResource>>& GetResources();
+        static std::vector<std::shared_ptr<IResource>>& GetCurrentResourcePool();
+        static std::vector<std::vector<std::shared_ptr<IResource>>>& GetResources();
         static std::recursive_mutex& GetMutex();
         static std::mutex& GetInFlightMutex(const std::string& path);
 

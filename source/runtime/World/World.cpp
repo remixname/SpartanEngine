@@ -837,7 +837,7 @@ namespace spartan
         Renderer::DisableProceduralGrass();          // drop renderer references to builder owned grass mesh/material
         WorldHelpers::Clear();                        // release long lived builder meshes and materials
         Renderer::DestroyAccelerationStructures();   // destroy tlas/blas before clearing resources
-        ResourceCache::Shutdown();                   // release all resources (textures, materials, meshes, etc)n
+        ResourceCache::RemoveCurrentPool();                   // release all resources (textures, materials, meshes, etc)n
 
         // clear entities
         camera = nullptr;
@@ -1279,7 +1279,11 @@ namespace spartan
         Car::RegisterPrefabs();
 
         // shutdown synchronously before async loading
-        Shutdown();
+        if(!World::GetName().empty())
+        {
+            Shutdown();
+        }
+        ResourceCache::PushResourcePool();
 
         // copy path for the lambda capture
         string path_copy = file_path_;

@@ -242,18 +242,17 @@ namespace spartan
     size_t ResourceCache::GetResourceCount(const ResourceType type)
     {
         lock_guard<recursive_mutex> guard(m_mutex);
+        std::function<uint64_t (uint64_t, const std::vector<shared_ptr<IResource>>&)> accumFunc;
         if (type == ResourceType::Max)
         {
-            return m_resources.size();
+            accumFunc = [](uint64_t sum, const auto& resource_pool) { return sum + resource_pool.size(); };
         }
         else
         {
-            return std::accumulate(m_resources.begin(), m_resources.end(), 0ull,
-                [type](uint64_t sum, const auto& resource_pool)
-                {
-                    return sum + std::count_if(resource_pool.begin(), resource_pool.end(), [type](auto& res) { return res->GetResourceType() == type; });
-                });
+            accumFunc = [type](uint64_t sum, const auto& resource_pool)
+            { return sum + std::ranges::count_if(resource_pool, [type](auto& res) { return res->GetResourceType() == type; }); };
         }
+        return std::accumulate(m_resources.begin(), m_resources.end(), 0ull, accumFunc);
     }
 
     void ResourceCache::AddResourceDirectory(const ResourceDirectory type, const string& directory)

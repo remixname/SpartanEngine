@@ -119,51 +119,13 @@ namespace spartan
         // mesh
         const string mesh_name = node.attribute("mesh_name").as_string();
         m_sub_mesh_index       = node.attribute("sub_mesh_index").as_uint();
-        if (!mesh_name.empty())
-        {
-            static const std::unordered_map<string, MeshType> standard_meshes =
-            {
-                { "standard_cube",     MeshType::Cube },
-                { "standard_quad",     MeshType::Quad },
-                { "standard_sphere",   MeshType::Sphere },
-                { "standard_cylinder", MeshType::Cylinder },
-                { "standard_cone",     MeshType::Cone }
-            };
-            // check for standard meshes first (owned by Renderer, not ResourceCache)
-            if (auto it = standard_meshes.find(mesh_name); it != standard_meshes.end())
-            {
-                m_mesh = Renderer::GetStandardMesh(it->second).get();
-            }
-            else
-            {
-                // look up in ResourceCache for custom meshes
-                shared_ptr<Mesh> mesh = ResourceCache::GetByName<Mesh>(mesh_name);
-                if (mesh)
-                {
-                    m_mesh = mesh.get();
-                }
-                else
-                {
-                    SP_LOG_WARNING("Renderable::Load - mesh '%s' not found in cache", mesh_name.c_str());
-                }
-            }
-        }
+        ResourceCache::OperateOnResource<Mesh>(mesh_name, [&m_mesh = m_mesh](auto& mesh){ m_mesh = mesh.get(); });
 
         // material
-        const string material_name = node.attribute("material_name").as_string();
-        if (!material_name.empty())
-        {
-            shared_ptr<Material> material = ResourceCache::GetByName<Material>(material_name);
-            if (material)
-            {
-                SetMaterial(material);
-            }
-        }
-        else
-        {
-            // defer default material assignment - renderer may not be ready during load
-            m_needs_default_material = true;
-        }
+        string material_name = node.attribute("material_name").as_string();
+        if (material_name.empty())
+            material_name = "standard";
+        ResourceCache::OperateOnResource<Material>(material_name, [this](auto& material){ SetMaterial(material); });
 
         // flags
         m_flags = node.attribute("flags").as_uint();
@@ -219,16 +181,6 @@ namespace spartan
 
     void Render::Tick()
     {
-        // deferred default material assignment (renderer may not be ready during load)
-        if (m_needs_default_material)
-        {
-            if (Renderer::GetStandardMaterial())
-            {
-                SetDefaultMaterial();
-                m_needs_default_material = false;
-            }
-        }
-
         UpdateAabb();
         UpdateFrustumAndDistanceCulling();
         UpdateLodIndices();

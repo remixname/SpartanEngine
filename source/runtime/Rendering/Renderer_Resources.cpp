@@ -934,6 +934,7 @@ namespace spartan
             mesh->CreateGpuBuffers();
 
             standard_meshes[static_cast<uint8_t>(def.type)] = mesh;
+            ResourceCache::Cache(mesh);
         }
 
         m_lines_vertex_buffer = make_shared<RHI_Buffer>();
@@ -977,11 +978,10 @@ namespace spartan
 
     void Renderer::CreateStandardMaterials()
     {
-        const string data_dir = string(ResourceCache::GetDataDirectory()) + "/";
-        FileSystem::CreateDirectory_(data_dir);
+        const string materials_dir = ResourceCache::GetResourceDirectory(ResourceDirectory::Materials) + "/";
 
         standard_material = make_shared<Material>();
-        standard_material->SetResourceName("standard" + string(EXTENSION_MATERIAL));
+        standard_material->SetResourceFilePath(materials_dir + "standard" + string(EXTENSION_MATERIAL));
         standard_material->SetProperty(MaterialProperty::TextureTilingX, 1.0f);
         standard_material->SetProperty(MaterialProperty::TextureTilingY, 1.0f);
         standard_material->SetProperty(MaterialProperty::ColorR,         1.0f);
@@ -990,6 +990,7 @@ namespace spartan
         standard_material->SetProperty(MaterialProperty::ColorA,         1.0f);
         standard_material->SetProperty(MaterialProperty::WorldSpaceUv,   1.0f);
         standard_material->SetTexture(MaterialTextureType::Color,        Renderer::GetStandardTexture(Renderer_StandardTexture::Checkerboard));
+        ResourceCache::Cache(standard_material);
     }
 
     void Renderer::DestroyResources()

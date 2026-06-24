@@ -116,12 +116,29 @@ namespace spartan
          static void LoadDefaultResources();
          static void UnloadDefaultResources();
 
+
+
+        template <class T, typename TOperation>
+        static void OperateOnResource(const std::string& name, TOperation op)
+        {
+            std::lock_guard<std::recursive_mutex> guard(GetMutex());
+            auto resource = std::static_pointer_cast<T>(GetByNameUnprotected(name, IResource::TypeToEnum<T>()));
+            if(resource)
+            {
+                op(resource);
+            }
+            else
+            {
+                SP_LOG_WARNING("%s '%s' not found in cache", typeid(T).name(), name.c_str());
+            }
+        }
+
         // get by name
-        static std::shared_ptr<IResource>& GetByName(const std::string& name, ResourceType type);
         template <class T>
         static std::shared_ptr<T> GetByName(const std::string& name)
         {
-            return std::static_pointer_cast<T>(GetByName(name, IResource::TypeToEnum<T>()));
+            std::lock_guard<std::recursive_mutex> guard(GetMutex());
+            return std::static_pointer_cast<T>(GetByNameUnprotected(name, IResource::TypeToEnum<T>()));
         }
 
         // get by type
@@ -132,12 +149,7 @@ namespace spartan
         static std::shared_ptr<T> GetByPath(const std::string& path)
         {
             std::lock_guard<std::recursive_mutex> guard(GetMutex());
-            for (std::shared_ptr<IResource>& resource : GetResources() | std::views::join) // flattenig such that it iterates over all pools 
-            {
-                if (path == resource->GetResourceFilePath())
-                    return std::static_pointer_cast<T>(resource);
-            }
-            return nullptr;
+            return GetByPathUnprotected<T>(path);
         }
 
         // caches resource, or replaces with existing cached resource
@@ -243,6 +255,18 @@ namespace spartan
         static const ResourceInfoList& GetResourceInfoList();
 
     private:
+        static std::shared_ptr<IResource>& GetByNameUnprotected(const std::string& name, ResourceType type);
+        template <class T>
+        static std::shared_ptr<T> GetByPathUnprotected(const std::string& path)
+        {
+            for (std::shared_ptr<IResource>& resource : GetResources() | std::views::join) // flattenig such that it iterates over all pools 
+            {
+                if (path == resource->GetResourceFilePath())
+                    return std::static_pointer_cast<T>(resource);
+            }
+            return nullptr;
+        }
+
 
         static std::vector<std::shared_ptr<IResource>>& GetCurrentResourcePool();
         static std::vector<std::vector<std::shared_ptr<IResource>>>& GetResources();

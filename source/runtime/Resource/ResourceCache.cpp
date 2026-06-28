@@ -162,32 +162,29 @@ namespace spartan
         return empty;
     }
 
+    vector<shared_ptr<IResource>> ResourceCache::GetByType(uint32_t offset, uint32_t limit, const ResourceType type /*= ResourceType::Max*/)
+    {
+        std::lock_guard<std::recursive_mutex> guard(m_mutex);
+        auto check_type = [type](const auto& res)
+        {
+            return (type == ResourceType::Max) || (res && res->GetResourceType() == type);
+        };
+
+        auto by_type_view = m_resources
+            | std::views::join                 // Flatten the vector
+            | std::views::filter(check_type)   // Filter matching types on-the-fly
+            | std::views::drop(offset)         // Skip 'offset' matching elements
+            | std::views::take(limit);         // Take 'limit' or all elements to the end
+
+
+        std::vector<std::shared_ptr<IResource>> resources;
+        std::ranges::copy(by_type_view, std::back_inserter(resources));
+        return resources;
+    }
+
     vector<shared_ptr<IResource>> ResourceCache::GetByType(const ResourceType type /*= ResourceType::Max*/)
     {
-        lock_guard<recursive_mutex> guard(m_mutex);
-        vector<shared_ptr<IResource>> resources;
-        if (type == ResourceType::Max)
-        {
-            //calculate destination size to avoid bunch of allocs
-            std::size_t resource_count = 0;
-            for (const auto& sub_vec : m_resources)
-            {
-                resource_count += sub_vec.size();
-            }
-            resources.reserve(resource_count);
-
-            for (const auto& resource_pool : m_resources) {
-                resources.insert(resources.end(), resource_pool.begin(), resource_pool.end());
-            }
-        }
-        else
-        {
-            for (auto& resource_pool : m_resources)
-            {
-                std::copy_if(resource_pool.begin(), resource_pool.end(), std::back_inserter(resources), [type](const auto& res) { return res && res->GetResourceType() == type; });
-            }
-        }
-        return resources;
+        return GetByType(0, 5000, type);
     }
 
     void ResourceCache::SaveCacheResources(const std::string& directory)

@@ -40,6 +40,7 @@ IResource::IResource(const ResourceType type)
 
 template <typename T>
 ResourceType IResource::TypeToEnum() { return ResourceType::Unknown; }
+template<> ResourceType IResource::TypeToEnum<spartan::IResource>() { return ResourceType::Unknown; }
 
 template<typename T>
 inline constexpr void validate_resource_type() { static_assert(std::is_base_of<IResource, T>::value, "Provided type does not implement IResource"); }

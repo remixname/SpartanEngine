@@ -119,13 +119,13 @@ namespace spartan
         // mesh
         const string mesh_name = node.attribute("mesh_name").as_string();
         m_sub_mesh_index       = node.attribute("sub_mesh_index").as_uint();
-        ResourceCache::OperateOnResource<Mesh>(mesh_name, [&m_mesh = m_mesh](auto& mesh){ m_mesh = mesh.get(); });
+        ResourceCache::OperateOnResourceByName<Mesh>(mesh_name, [&m_mesh = m_mesh](auto& mesh){ m_mesh = mesh.get(); });
 
         // material
         string material_name = node.attribute("material_name").as_string();
         if (material_name.empty())
             material_name = "standard";
-        ResourceCache::OperateOnResource<Material>(material_name, [this](auto& material){ SetMaterial(material); });
+        ResourceCache::OperateOnResourceByName<Material>(material_name, [this](auto& material){ SetMaterial(material); });
 
         // flags
         m_flags = node.attribute("flags").as_uint();

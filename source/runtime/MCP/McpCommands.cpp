@@ -1223,44 +1223,6 @@ namespace spartan
             return std::nullopt;
         }
 
-        IResource* get_resource_by_name_or_path(const std::string& name_or_path, ResourceType type)
-        {
-            std::lock_guard<std::recursive_mutex> guard(ResourceCache::GetMutex());
-            for (std::shared_ptr<IResource>& resource : ResourceCache::GetResources())
-            {
-                if (!resource || (type != ResourceType::Max && resource->GetResourceType() != type))
-                {
-                    continue;
-                }
-
-                if (resource->GetObjectName() == name_or_path || resource->GetResourceFilePath() == name_or_path)
-                {
-                    return resource.get();
-                }
-            }
-
-            return nullptr;
-        }
-
-        std::shared_ptr<IResource> get_resource_shared_by_name_or_path(const std::string& name_or_path, ResourceType type)
-        {
-            std::lock_guard<std::recursive_mutex> guard(ResourceCache::GetMutex());
-            for (std::shared_ptr<IResource>& resource : ResourceCache::GetResources())
-            {
-                if (!resource || (type != ResourceType::Max && resource->GetResourceType() != type))
-                {
-                    continue;
-                }
-
-                if (resource->GetObjectName() == name_or_path || resource->GetResourceFilePath() == name_or_path)
-                {
-                    return resource;
-                }
-            }
-
-            return nullptr;
-        }
-
         std::optional<std::string> renderer_debug_cvar_from_name(const std::string& name)
         {
             if (name == "aabb")
@@ -1320,24 +1282,17 @@ namespace spartan
             return "[\"aabb\",\"picking_ray\",\"grid\",\"transform_handle\",\"selection_outline\",\"lights\",\"audio_sources\",\"performance_metrics\",\"physics\",\"wireframe\",\"meshlet_visualize\",\"cluster_visualize\"]";
         }
 
-        Material* get_material_from_request(const McpRequest& request, std::string& error)
+        std::optional<std::pair<std::string, std::string>> choose_argument(const McpRequest& request, std::vector<std::string> arguments)
         {
-            const std::optional<std::string> name = get_argument(request, "name");
-            const std::optional<std::string> path = get_argument(request, "path");
-            const std::string key = name ? *name : (path ? *path : "");
-            if (key.empty())
+            for (const auto& arg : arguments)
             {
-                error = "missing material name or path";
-                return nullptr;
+                const auto it = request.arguments.find(arg);
+                if (it != request.arguments.end())
+                {
+                    return *it;
+                }
             }
-
-            Material* material = static_cast<Material*>(get_resource_by_name_or_path(key, ResourceType::Material));
-            if (material == nullptr)
-            {
-                error = "material not found";
-            }
-
-            return material;
+            return std::nullopt;
         }
 
         std::string resource_to_json(IResource* resource)
@@ -3542,39 +3497,26 @@ namespace spartan
                 offset = static_cast<uint32_t>(parsed);
             }
 
-            uint32_t total = 0;
-            uint32_t emitted = 0;
+            size_t total = 0;
+            size_t emitted = 0;
             std::string json = "{\"ok\":true";
             json += ",\"type\":" + json_string(resource_type_to_name(type));
             json += ",\"offset\":" + std::to_string(offset);
             json += ",\"resources\":[";
             bool first = true;
-            std::lock_guard<std::recursive_mutex> guard(ResourceCache::GetMutex());
-            for (std::shared_ptr<IResource>& resource : ResourceCache::GetResources())
+
+            auto resources = ResourceCache::GetByType(offset, limit, type);
+            emitted = resources.size();
+            for (const auto& resource : resources)
             {
-                if (!resource || (type != ResourceType::Max && resource->GetResourceType() != type))
-                {
-                    continue;
-                }
-
-                if (total++ < offset)
-                {
-                    continue;
-                }
-
-                if (emitted >= limit)
-                {
-                    continue;
-                }
-
                 if (!first)
                 {
                     json += ",";
                 }
                 first = false;
-                emitted++;
                 json += resource_to_json(resource.get());
             }
+            total = ResourceCache::GetResourceCount(type);
 
             json += "],\"total\":" + std::to_string(total);
             json += ",\"count\":" + std::to_string(emitted);
@@ -3583,16 +3525,44 @@ namespace spartan
             return json;
         }
 
+
+        template<typename T, typename TOperation, typename TFallback>
+        auto operate_on_resource(const McpRequest& request, const std::string& resource_type_str, TOperation resOp, TFallback fallback)
+        {
+            if (auto request_param = choose_argument(request, { "name", "path" }))
+            {
+                auto [param_name, param_value] = *request_param;
+
+                if (param_name == "name")
+                {
+                    return ResourceCache::OperateOnResourceByName<T>(param_value, resOp, fallback);
+                }
+                else if (param_name == "path")
+                {
+                    return ResourceCache::OperateOnResourceByPath<T>(param_value, resOp, fallback);
+                }
+            }
+            return json_error("missing" + resource_type_str + "name or path");
+        }
+
+        template<typename T>
+        auto operate_on_resource(const McpRequest& request, const std::string& resource_type_str)
+        {
+            return operate_on_resource<T>(request, resource_type_str, [](auto& material) { return "{\"ok\":true,\"material\":" + material_to_json(material.get()) + "}"; },
+                                                                   [resource_type_str]() { return json_error(resource_type_str + " not found"); });
+        }
+
+        template<typename T, typename TOperation>
+        auto operate_on_resource(const McpRequest& request, const std::string& resource_type_str, TOperation res_op)
+        {
+            return operate_on_resource<T>(request, resource_type_str, res_op, [resource_type_str]() { return json_error(resource_type_str + " not found"); });
+        }
+
+
+
         std::string command_material_get(const McpRequest& request)
         {
-            std::string error;
-            Material* material = get_material_from_request(request, error);
-            if (material == nullptr)
-            {
-                return json_error(error);
-            }
-
-            return "{\"ok\":true,\"material\":" + material_to_json(material) + "}";
+            return operate_on_resource<Material>(request, "material");
         }
 
         std::string command_material_set_property(const McpRequest& request)
@@ -3604,13 +3574,6 @@ namespace spartan
             if (!is_edit_mode())
             {
                 return json_error("material edits require edit mode");
-            }
-
-            std::string error;
-            Material* material = get_material_from_request(request, error);
-            if (material == nullptr)
-            {
-                return json_error(error);
             }
 
             const std::optional<std::string> property_arg = get_argument(request, "property");
@@ -3632,8 +3595,13 @@ namespace spartan
                 return json_error("invalid material property value");
             }
 
-            material->SetProperty(*property, value);
-            return "{\"ok\":true,\"material\":" + material_to_json(material) + "}";
+
+            return operate_on_resource<Material>(request, "material",
+                [&](auto& material)
+                {
+                    material->SetProperty(*property, value);
+                    return "{\"ok\":true,\"material\":" + material_to_json(material.get()) + "}";
+                });
         }
 
         std::string command_material_set_texture(const McpRequest& request)
@@ -3645,13 +3613,6 @@ namespace spartan
             if (!is_edit_mode())
             {
                 return json_error("material edits require edit mode");
-            }
-
-            std::string error;
-            Material* material = get_material_from_request(request, error);
-            if (material == nullptr)
-            {
-                return json_error(error);
             }
 
             const std::optional<std::string> texture_type_arg = get_argument(request, "texture_type");
@@ -3677,9 +3638,12 @@ namespace spartan
                 }
                 slot = static_cast<uint8_t>(parsed);
             }
-
-            material->SetTexture(*texture_type, *texture_path, slot);
-            return "{\"ok\":true,\"material\":" + material_to_json(material) + "}";
+            return operate_on_resource<Material>(request, "material",
+                [&](auto& material)
+                {
+                    material->SetTexture(*texture_type, *texture_path, slot);
+                    return "{\"ok\":true,\"material\":" + material_to_json(material.get()) + "}";
+                });
         }
 
         std::string command_undo_redo(const McpRequest& request)
@@ -3799,18 +3763,12 @@ namespace spartan
                 type = *parsed;
             }
 
-            std::shared_ptr<IResource> resource = get_resource_shared_by_name_or_path(*key_arg, type);
-            if (!resource)
-            {
-                return json_error("resource not found");
-            }
-            if (resource->GetResourceFilePath().empty())
-            {
-                return json_error("resource has no file path");
-            }
-
-            resource->LoadFromFile(resource->GetResourceFilePath());
-            return "{\"ok\":true,\"resource\":" + resource_to_json(resource.get()) + "}";
+            return operate_on_resource<IResource>(request, "resource",
+                [&](auto& resource)
+                {
+                    resource->LoadFromFile(resource->GetResourceFilePath());
+                    return "{\"ok\":true,\"resource\":" + resource_to_json(resource.get()) + "}";
+                });
         }
 
         std::string command_resource_save(const McpRequest& request)
@@ -3841,27 +3799,27 @@ namespace spartan
                 type = *parsed;
             }
 
-            std::shared_ptr<IResource> resource = get_resource_shared_by_name_or_path(*key_arg, type);
-            if (!resource)
-            {
-                return json_error("resource not found");
-            }
-
             const std::optional<std::string> save_path = get_argument(request, "save_path");
-            const std::string path = save_path && !save_path->empty() ? *save_path : resource->GetResourceFilePath();
-            if (path.empty())
-            {
-                return json_error("resource has no save path");
-            }
 
-            const std::filesystem::path file_path(path);
-            if (file_path.has_parent_path())
-            {
-                std::filesystem::create_directories(file_path.parent_path());
-            }
-            resource->SetResourceFilePath(path);
-            resource->SaveToFile(path);
-            return "{\"ok\":true,\"path\":" + json_string(path) + ",\"resource\":" + resource_to_json(resource.get()) + "}";
+            return operate_on_resource<IResource>(request, "resource",
+                [&](auto& resource)
+                {
+                    const std::string path = save_path && !save_path->empty() ? *save_path : resource->GetResourceFilePath();
+                    if (path.empty())
+                    {
+                        return json_error("resource has no save path");
+                    }
+
+                    const std::filesystem::path file_path(path);
+                    if (file_path.has_parent_path())
+                    {
+                        std::filesystem::create_directories(file_path.parent_path());
+                    }
+
+                    resource->SetResourceFilePath(path);
+                    resource->SaveToFile(path);
+                    return "{\"ok\":true,\"path\":" + json_string(path) + ",\"resource\":" + resource_to_json(resource.get()) + "}";
+                });
         }
 
         std::string command_resource_remove(const McpRequest& request)
@@ -3875,12 +3833,6 @@ namespace spartan
                 return json_error("resource removal requires edit mode");
             }
 
-            const std::optional<std::string> key_arg = get_argument(request, "name") ? get_argument(request, "name") : get_argument(request, "path");
-            if (!key_arg || key_arg->empty())
-            {
-                return json_error("missing resource name or path");
-            }
-
             ResourceType type = ResourceType::Max;
             if (const std::optional<std::string> type_arg = get_argument(request, "type"))
             {
@@ -3892,21 +3844,46 @@ namespace spartan
                 type = *parsed;
             }
 
-            std::lock_guard<std::recursive_mutex> guard(ResourceCache::GetMutex());
-            std::vector<std::shared_ptr<IResource>>& resources = ResourceCache::GetResources();
-            const auto it = std::find_if(resources.begin(), resources.end(), [&](const std::shared_ptr<IResource>& resource)
+            auto request_param = choose_argument(request, { "name", "path" });
+            if (!request_param)
             {
-                return resource && (type == ResourceType::Max || resource->GetResourceType() == type) && (resource->GetObjectName() == *key_arg || resource->GetResourceFilePath() == *key_arg);
-            });
-
-            if (it == resources.end())
-            {
-                return json_error("resource not found");
+                return json_error("missing material name or path");
             }
+            else
+            {
+                auto [param_name, param_value] = *request_param;
 
-            const std::string removed = resource_to_json(it->get());
-            resources.erase(it);
-            return "{\"ok\":true,\"removed\":" + removed + "}";
+                std::string removed;
+                auto type_check = [&](const auto& resource) { return resource && (type == ResourceType::Max || resource->GetResourceType() == type); };
+                auto by_name_check = [&](const auto& resource) { return resource->GetObjectName() == param_value;  };
+                auto by_path_check = [&](const auto& resource) { return resource->GetResourceFilePath() == param_value;  };
+                auto op_before_erase = [&removed](auto& resource) { removed = resource_to_json(resource.get()); };
+
+                std::function<bool (std::shared_ptr<IResource>&)> remove_check;
+
+                if (param_name == "name")
+                {
+                    remove_check = [&](auto& resource) { return type_check(resource) && by_name_check(resource); };
+                }
+                else if(param_name == "path")
+                {
+                    remove_check = [&](auto& resource) { return type_check(resource) && by_path_check(resource); };
+                }
+
+                
+                auto found = ResourceCache::Remove(remove_check, op_before_erase);
+                    
+
+                if(found)
+                {
+                    return "{\"ok\":true,\"removed\":" + removed + "}";
+                }
+                else
+                {
+                    return json_error("resource not found");
+                }
+            }
+            
         }
 
         std::string command_material_create(const McpRequest& request)

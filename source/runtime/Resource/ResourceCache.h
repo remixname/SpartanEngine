@@ -113,24 +113,46 @@ namespace spartan
         static void RemoveCurrentPool(); 
 
         // default resources
-         static void LoadDefaultResources();
-         static void UnloadDefaultResources();
+        static void LoadDefaultResources();
+        static void UnloadDefaultResources();
 
-
+        template <class T, typename TOperation, typename TFallback>
+        static auto OperateOnResourceByName(const std::string& name, TOperation op, TFallback fallback)
+        {
+            return OperateOnResource<T>(name, op,
+                [](const auto& name) { return ResourceCache::GetByNameUnprotected(name, IResource::TypeToEnum<T>()); },
+                fallback);
+        }
 
         template <class T, typename TOperation>
-        static void OperateOnResource(const std::string& name, TOperation op)
+        static void OperateOnResourceByName(const std::string& name, TOperation op)
+        {
+            OperateOnResourceByName<T>(name, op, [name]() {
+                SP_LOG_WARNING("%s '%s' not found in cache", typeid(T).name(), name.c_str());
+                });
+        }
+
+        template <class T, typename TOperation, typename TFallback>
+        static auto OperateOnResourceByPath(const std::string& path, TOperation op, TFallback fallback)
+        {
+            return OperateOnResource<T>(path, op,
+                [](const auto& path) { return ResourceCache::GetByPathUnprotected<T>(path); },
+                fallback);
+        }
+
+        template <class T, typename TOperation>
+        static void OperateOnResourceByPath(const std::string& path, TOperation op)
+        {
+            OperateOnResourceByPath<T>(path, op, [path]() {
+                SP_LOG_WARNING("%s '%s' not found in cache", typeid(T).name(), path.c_str());
+                });
+        }
+
+        template <typename TOperation>
+        static auto OperateOnAllResources(TOperation op)
         {
             std::lock_guard<std::recursive_mutex> guard(GetMutex());
-            auto resource = std::static_pointer_cast<T>(GetByNameUnprotected(name, IResource::TypeToEnum<T>()));
-            if(resource)
-            {
-                op(resource);
-            }
-            else
-            {
-                SP_LOG_WARNING("%s '%s' not found in cache", typeid(T).name(), name.c_str());
-            }
+            return op(GetResources());
         }
 
         // get by name
@@ -143,6 +165,7 @@ namespace spartan
 
         // get by type
         static std::vector<std::shared_ptr<IResource>> GetByType(ResourceType type = ResourceType::Max);
+        static std::vector<std::shared_ptr<IResource>> GetByType(uint32_t offset, uint32_t limit, ResourceType type = ResourceType::Max);
 
         // get by path
         template <class T>
@@ -254,7 +277,40 @@ namespace spartan
         using ResourceInfoList = std::vector<ResourceInfo>;
         static const ResourceInfoList& GetResourceInfoList();
 
+        template<typename TMatchPredicate, typename TOpBeforeErase>
+        static bool Remove(TMatchPredicate match_pred, TOpBeforeErase op)
+        {
+            for (auto pool = GetResources().begin(); pool != GetResources().end(); ++pool)
+            {
+                auto resource_it = std::ranges::find_if(*pool, match_pred);
+
+                if (resource_it != pool->end())
+                {
+                    op(*resource_it);
+                    pool->erase(resource_it);
+                    return true;
+                }
+            }
+            return false;
+        }
+
     private:
+
+        template <class T, typename TOperation, typename TGetResourceFn, typename TFallback>
+        static auto OperateOnResource(const std::string& param, TOperation op, TGetResourceFn getResFn, TFallback fallback) -> std::invoke_result_t<TFallback>
+        {
+            std::lock_guard<std::recursive_mutex> guard(GetMutex());
+            auto resource = std::static_pointer_cast<T>(getResFn(param));
+            if (resource)
+            {
+                return op(resource);
+            }
+            else
+            {
+                return fallback();
+            }
+        }
+
         static std::shared_ptr<IResource>& GetByNameUnprotected(const std::string& name, ResourceType type);
         template <class T>
         static std::shared_ptr<T> GetByPathUnprotected(const std::string& path)
